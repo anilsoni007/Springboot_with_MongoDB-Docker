@@ -1,0 +1,18 @@
+version: "3.9"
+services:
+   mongo:
+     image: mongo
+     environment:
+       - MONGO_INITDB_ROOT_USERNAME=spring
+       - MONGO_INITDB_ROOT_PASSWORD=pwd003
+       
+    springapp:
+      image: asoni007/springapp:v1
+      environment:
+        - MONGO_DB_HOSTNAME=mongo
+        - MONGO_DB_USERNAME=spring
+        - MONGO_DB_PASSWORD=pwd003
+      ports:
+        - "80:8080"
+      depends_on:
+        - mongo
