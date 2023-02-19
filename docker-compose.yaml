@@ -1,12 +1,15 @@
-version: "3.9"
+version: "3.3"
 services:
    mongo:
      image: mongo
+     networks:
+       - springappbridge
+     volumes:
+       - mongodb:/data/db
      environment:
        - MONGO_INITDB_ROOT_USERNAME=spring
        - MONGO_INITDB_ROOT_PASSWORD=pwd003
-       
-    springapp:
+   springapp:
       image: asoni007/springapp:v1
       environment:
         - MONGO_DB_HOSTNAME=mongo
@@ -14,5 +17,13 @@ services:
         - MONGO_DB_PASSWORD=pwd003
       ports:
         - "80:8080"
+      networks:
+        - springappbridge
       depends_on:
         - mongo
+volumes:
+  mongodb:
+networks:
+  springappbridge:
+   external: false
+
