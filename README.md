@@ -27,6 +27,8 @@ docker build -t <your-reg-name>/spring-boot-mongo .
 ```docker-compose 
 docker-compose up -d 
 ```
+## Deploy Application Using Docker Compose in different environments
+'''docker-compose -f docker-compose.yaml -f docker-compose-qa.yaml up -d
 
 ## List Docker Containers
 ```docker
