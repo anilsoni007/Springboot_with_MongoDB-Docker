@@ -10,7 +10,7 @@ services:
        - MONGO_INITDB_ROOT_USERNAME=spring
        - MONGO_INITDB_ROOT_PASSWORD=pwd003
    springapp:
-      image: asoni007/springapp:v1
+      image: asoni007/springapp:1
       environment:
         - MONGO_DB_HOSTNAME=mongo
         - MONGO_DB_USERNAME=spring
