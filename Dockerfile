@@ -1,13 +1,12 @@
-FROM eclipse-temurin:8-jre-alpine
+FROM node:18-alpine
 
-# Required for starting application up.
-RUN apk update && apk add /bin/sh
+WORKDIR /app
 
-RUN mkdir -p /opt/app
-ENV PROJECT_HOME /opt/app
+COPY package*.json ./
+RUN npm install
 
-COPY target/spring-boot-mongo-1.0.jar $PROJECT_HOME/spring-boot-mongo.jar
+COPY . .
 
-WORKDIR $PROJECT_HOME
-EXPOSE 8080
-CMD ["java" ,"-jar","./spring-boot-mongo.jar"]
+EXPOSE 3000
+
+CMD ["npm", "start"]

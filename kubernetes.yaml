@@ -1,110 +1,133 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
- name: mydeploy
-spec:
- replicas: 2
- selector:
-  matchLabels:
-   app: test
- template:
-  metadata:
-   name: mypod
-   labels:
-    app: test
-  spec:
-   containers:
-    - name: mycon
-      image: asoni007/spring_mongo:4
-      imagePullPolicy: Always
-      ports:
-       - containerPort: 8080
-      env:
-       - name: MONGO_DB_HOSTNAME
-         value: backend-svc
-       - name: MONGO_DB_USERNAME
-         value: admin
-       - name: MONGO_DB_PASSWORD
-         value: mongo123
 ---
+# ConfigMap for PostgreSQL init script
 apiVersion: v1
-kind: Service
+kind: ConfigMap
 metadata:
- name: myservice
- labels:
-  app: test
-spec:
- selector:
-  app: test
- type: NodePort
- ports:
-  - port: 80
-    targetPort: 8080
-    nodePort: 31563
+  name: postgres-init
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS todos (
+        id SERIAL PRIMARY KEY,
+        task VARCHAR(255) NOT NULL,
+        completed BOOLEAN DEFAULT FALSE
+    );
 ---
+# PostgreSQL StatefulSet
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
- name: mongodb
+  name: postgres
 spec:
- serviceName: headless-svc 
- replicas: 2
- selector:
-  matchLabels:
-   app: mongodb
- template:
-  metadata:
-   name: mydbcon
-   labels:
-    app: mongodb
-  spec:
-   containers:
-    - name: mycon
-      image: mongo
-      ports:
-       - containerPort: 27017
-      env:
-       - name: MONGO_INITDB_ROOT_USERNAME
-         value: admin
-       - name: MONGO_INITDB_ROOT_PASSWORD
-         value: mongo123
-      command:
-       - mongod
-       - --bind_ip_all
-      volumeMounts:
-       - name: myvol
-         mountPath: "/data/db"
- volumeClaimTemplates:
-  - metadata:
-     name: myvol
+  serviceName: postgres-headless   #headless Service for sticky identity(pod dns names!!)
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
     spec:
-     storageClassName: "ebs-sc"
-     accessModes:
-      - ReadWriteOnce
-     resources:
-      requests:
-       storage: 1Gi
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: tododb
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          value: postgres123
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: init-script
+        configMap:
+          name: postgres-init
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "ebs-sc"
+      resources:
+        requests:
+          storage: 1Gi
 ---
+# PostgreSQL Headless Service
 apiVersion: v1
 kind: Service
 metadata:
- name: backend-svc
+  name: postgres-headless
 spec:
- selector:
-   app: mongodb
- type: ClusterIP
- ports:
-  - port: 27017
-    targetPort: 27017
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
 ---
+# PostgreSQL ClusterIP Service
 apiVersion: v1
 kind: Service
 metadata:
- name: headless-svc
+  name: postgres-svc
 spec:
- selector:
-   app: mongodb
- clusterIP: None  
- ports:
-  - port: 27017
-    targetPort: 27017
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+# Todo App Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: todo-app
+  template:
+    metadata:
+      labels:
+        app: todo-app
+    spec:
+      containers:
+      - name: todo-app
+        image: asoni007/todo-app:1.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_HOST
+          value: postgres-svc
+        - name: DB_NAME
+          value: tododb
+        - name: DB_USER
+          value: postgres
+        - name: DB_PASSWORD
+          value: postgres123
+---
+# Todo App Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app-svc
+spec:
+  type: NodePort
+  selector:
+    app: todo-app
+  ports:
+  - port: 80
+    targetPort: 3000
+    nodePort: 31563
