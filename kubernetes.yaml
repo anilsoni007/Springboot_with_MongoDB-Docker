@@ -70,6 +70,7 @@ spec:
          value: mongo123
       command:
        - mongod
+       - --bind_ip_all
        - --auth
       volumeMounts:
        - name: myvol
