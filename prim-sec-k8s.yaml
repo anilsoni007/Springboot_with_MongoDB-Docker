@@ -209,7 +209,7 @@ spec:
     spec:
       containers:
       - name: todo-app
-        image: asoni007/todo-app:1.0
+        image: asoni007/todo-app:2.0
         imagePullPolicy: Always
         ports:
         - containerPort: 3000

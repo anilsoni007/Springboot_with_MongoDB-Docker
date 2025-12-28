@@ -9,7 +9,9 @@ data:
     CREATE TABLE IF NOT EXISTS todos (
         id SERIAL PRIMARY KEY,
         task VARCHAR(255) NOT NULL,
-        completed BOOLEAN DEFAULT FALSE
+        completed BOOLEAN DEFAULT FALSE,
+        owner VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 ---
 # PostgreSQL StatefulSet
@@ -104,7 +106,7 @@ spec:
     spec:
       containers:
       - name: todo-app
-        image: asoni007/todo-app:1.0
+        image: asoni007/todo-app:2.0
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
