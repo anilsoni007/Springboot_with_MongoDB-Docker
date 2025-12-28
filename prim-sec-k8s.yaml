@@ -1,0 +1,238 @@
+---
+# ConfigMap for PostgreSQL configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+data:
+  primary.sh: |
+    #!/bin/bash
+    set -e
+    
+    # Create replication user
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+      CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'replicator123';
+      SELECT pg_create_physical_replication_slot('replication_slot_replica1');
+    EOSQL
+    
+    # Configure primary for replication
+    cat >> "$PGDATA/postgresql.conf" <<EOF
+    wal_level = replica
+    max_wal_senders = 3
+    max_replication_slots = 3
+    hot_standby = on
+    EOF
+    
+    # Allow replication connections
+    echo "host replication replicator 0.0.0.0/0 md5" >> "$PGDATA/pg_hba.conf"
+    
+  replica.sh: |
+    #!/bin/bash
+    set -e
+    
+    # Wait for primary to be ready
+    until pg_isready -h postgres-0.postgres-headless -U postgres; do
+      echo "Waiting for primary..."
+      sleep 2
+    done
+    
+    # If data directory is empty, create base backup from primary
+    if [ ! -s "$PGDATA/PG_VERSION" ]; then
+      echo "Creating base backup from primary..."
+      rm -rf "$PGDATA"/*
+      PGPASSWORD=replicator123 pg_basebackup -h postgres-0.postgres-headless -D "$PGDATA" -U replicator -v -P -R -X stream -C -S replication_slot_replica1
+      echo "Base backup completed"
+    fi
+    
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS todos (
+        id SERIAL PRIMARY KEY,
+        task VARCHAR(255) NOT NULL,
+        completed BOOLEAN DEFAULT FALSE,
+        owner VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres-headless
+  replicas: 2
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: tododb
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          value: postgres123
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        command:
+        - bash
+        - "-c"
+        - |
+          set -ex
+          # postgres-0 is primary, others are replicas
+          if [[ $POD_NAME == "postgres-0" ]]; then
+            # Primary setup
+            if [ ! -s "$PGDATA/PG_VERSION" ]; then
+              docker-entrypoint.sh postgres &
+              sleep 10
+              sh /config/primary.sh
+              pkill postgres
+              sleep 5
+            fi
+            exec docker-entrypoint.sh postgres
+          else
+            # Replica setup
+            sh /config/replica.sh
+            exec docker-entrypoint.sh postgres
+          fi
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: config
+          mountPath: /config
+        - name: init-script
+          mountPath: /docker-entrypoint-initdb.d
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - pg_isready -U postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: postgres-config
+          defaultMode: 0755
+      - name: init-script
+        configMap:
+          name: postgres-config
+          items:
+          - key: init.sql
+            path: init.sql
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "ebs-sc"
+      resources:
+        requests:
+          storage: 1Gi
+---
+# PostgreSQL Headless Service (for StatefulSet DNS)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+# PostgreSQL Primary Service (write operations)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-primary
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+    statefulset.kubernetes.io/pod-name: postgres-0
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+# PostgreSQL Read Service (read operations - load balanced across all)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-read
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+# Todo App Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: todo-app
+  template:
+    metadata:
+      labels:
+        app: todo-app
+    spec:
+      containers:
+      - name: todo-app
+        image: asoni007/todo-app:1.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: DB_HOST
+          value: postgres-primary
+        - name: DB_NAME
+          value: tododb
+        - name: DB_USER
+          value: postgres
+        - name: DB_PASSWORD
+          value: postgres123
+---
+# Todo App Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: todo-app-svc
+spec:
+  type: NodePort
+  selector:
+    app: todo-app
+  ports:
+  - port: 80
+    targetPort: 3000
+    nodePort: 31563
