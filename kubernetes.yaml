@@ -15,7 +15,7 @@ spec:
   spec:
    containers:
     - name: mycon
-      image: asoni007/spring_mongo:2
+      image: asoni007/spring_mongo:4
       imagePullPolicy: Always
       ports:
        - containerPort: 8080
@@ -68,6 +68,9 @@ spec:
          value: admin
        - name: MONGO_INITDB_ROOT_PASSWORD
          value: mongo123
+      command:
+       - mongod
+       - --auth
       volumeMounts:
        - name: myvol
          mountPath: "/data/db"
