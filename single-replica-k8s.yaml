@@ -1,3 +1,18 @@
+# ============================================================================
+# PostgreSQL Single Replica StatefulSet Configuration
+# ============================================================================
+# This manifest deploys a simple PostgreSQL setup with:
+#   - postgres-0: Single instance (read/write)
+#
+# Services:
+#   - postgres-headless: StatefulSet DNS (postgres-0.postgres-headless)
+#   - postgres-svc: Routes to postgres-0 (for all operations)
+#
+# Use this for:
+#   - Development/testing environments
+#   - Learning StatefulSet basics (persistent storage, stable identity)
+#   - Simple applications without high availability requirements
+# ============================================================================
 ---
 # ConfigMap for PostgreSQL init script
 apiVersion: v1
@@ -20,7 +35,7 @@ kind: StatefulSet
 metadata:
   name: postgres
 spec:
-  serviceName: postgres-headless   #headless Service for sticky identity(pod dns names!!)
+  serviceName: postgres-headless
   replicas: 1
   selector:
     matchLabels:

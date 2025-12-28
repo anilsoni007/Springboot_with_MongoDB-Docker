@@ -1,3 +1,23 @@
+# ============================================================================
+# PostgreSQL Primary-Replica StatefulSet Configuration
+# ============================================================================
+# This manifest deploys a production-ready PostgreSQL setup with:
+#   - postgres-0: Primary (read/write)
+#   - postgres-1: Replica (read-only, syncs from primary via streaming replication)
+#
+# Services:
+#   - postgres-headless: StatefulSet DNS (postgres-0.postgres-headless, postgres-1.postgres-headless)
+#   - postgres-primary: Routes to postgres-0 ONLY (for write operations)
+#   - postgres-read: Load balances across BOTH pods (for read operations)
+#
+# Current App Behavior:
+#   - App uses postgres-primary service, so ALL traffic goes to postgres-0
+#   - postgres-1 acts as hot standby for failover/backup
+#
+# To use read replica:
+#   - Modify app to use postgres-read service for SELECT queries
+#   - Keep postgres-primary for INSERT/UPDATE/DELETE
+# ============================================================================
 ---
 # ConfigMap for PostgreSQL configuration
 apiVersion: v1
@@ -11,8 +31,16 @@ data:
     
     # Create replication user
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-      CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'replicator123';
-      SELECT pg_create_physical_replication_slot('replication_slot_replica1');
+      DO \$\$
+      BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator') THEN
+          CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'replicator123';
+        END IF;
+      END
+      \$\$;
+      
+      SELECT pg_create_physical_replication_slot('replication_slot_replica1')
+      WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replication_slot_replica1');
     EOSQL
     
     # Configure primary for replication
