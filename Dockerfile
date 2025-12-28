@@ -1,4 +1,4 @@
-FROM openjdk:8-alpine
+FROM eclipse-temurin:8-jre-alpine
 
 # Required for starting application up.
 RUN apk update && apk add /bin/sh

@@ -15,7 +15,8 @@ spec:
   spec:
    containers:
     - name: mycon
-      image: asoni007/spring_mongo:1
+      image: asoni007/spring_mongo:2
+      imagePullPolicy: Always
       ports:
        - containerPort: 8080
       env:

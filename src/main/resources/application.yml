@@ -1,14 +1,7 @@
 spring:
   data:
     mongodb:
-      # In Case of mongodb Repel Set
-      uri: mongodb://${MONGO_DB_USERNAME}:${MONGO_DB_PASSWORD}@${MONGO_DB_HOSTNAME}:27017/users?authSource=admin
-      # host: ${MONGO_DB_HOSTNAME}
-      # port: 27017
-      # username: ${MONGO_DB_USERNAME}
-      # password: ${MONGO_DB_PASSWORD}
-      # database: users
-      # authentication-database: admin
+      uri: mongodb://${MONGO_DB_USERNAME}:${MONGO_DB_PASSWORD}@${MONGO_DB_HOSTNAME}:27017/users?authSource=admin&authMechanism=SCRAM-SHA-1
 
 server:
   port: 8080
