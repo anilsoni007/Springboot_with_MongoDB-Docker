@@ -39,14 +39,15 @@ spec:
  ports:
   - port: 80
     targetPort: 8080
-    nodePort: 32235
+    nodePort: 31563
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
  name: mongodb
 spec:
- replicas: 1
+ serviceName: headless-svc  # MOVED HERE - correct location
+ replicas: 2
  selector:
   matchLabels:
    app: mongodb
@@ -69,10 +70,16 @@ spec:
       volumeMounts:
        - name: myvol
          mountPath: "/data/db"
-   volumes:
-    - name: myvol
-      persistentVolumeClaim:
-       claimName: mypvc
+ volumeClaimTemplates:
+  - metadata:
+     name: myvol
+    spec:
+     storageClassName: "ebs-sc"
+     accessModes:
+      - ReadWriteOnce
+     resources:
+      requests:
+       storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
@@ -87,27 +94,13 @@ spec:
     targetPort: 27017
 ---
 apiVersion: v1
-kind: PersistentVolume
+kind: Service
 metadata:
- name: mypv
+ name: headless-svc
 spec:
- storageClassName: manual
- capacity:
-  storage: 1Gi
- accessModes:
-  - ReadWriteOnce
- persistentVolumeReclaimPolicy: Recycle
- hostPath:
-  path: "/tmp/mongovoldata"
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
- name: mypvc
-spec:
- storageClassName: manual
- accessModes:
-  - ReadWriteOnce
- resources:
-  requests:
-   storage: 1Gi
+ selector:
+   app: mongodb
+ clusterIP: None  
+ ports:
+  - port: 27017
+    targetPort: 27017
