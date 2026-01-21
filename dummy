@@ -1,0 +1,208 @@
+Here's a step-by-step guide to set up API Gateway + Lambda for your Power BI dashboard:
+
+Step 1: Create Lambda Layer for psycopg2
+# Create directory and download psycopg2 for Lambda
+mkdir python
+pip install psycopg2-binary -t python/
+zip -r psycopg2-layer.zip python
+rm -rf python
+
+# Upload layer
+aws lambda publish-layer-version \
+  --layer-name psycopg2-layer \
+  --zip-file fileb://psycopg2-layer.zip \
+  --compatible-runtimes python3.11
+
+Copy
+
+Insert at cursor
+Step 2: Create Lambda Function
+lambda_function.py:
+
+import json
+import psycopg2
+import os
+
+def lambda_handler(event, context):
+    try:
+        conn = psycopg2.connect(
+            host=os.environ['DB_HOST'],
+            database=os.environ['DB_NAME'],
+            user=os.environ['DB_USER'],
+            password=os.environ['DB_PASSWORD'],
+            port=5432,
+            sslmode='require'
+        )
+        
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT user_id, task_name, priority, due_date, status
+            FROM tasks
+            WHERE status != 'completed'
+            ORDER BY priority DESC, due_date ASC
+        """)
+        
+        tasks = []
+        for row in cur.fetchall():
+            tasks.append({
+                "user_id": row[0],
+                "task_name": row[1],
+                "priority": row[2],
+                "due_date": str(row[3]),
+                "status": row[4]
+            })
+        
+        cur.close()
+        conn.close()
+        
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps(tasks)
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({'error': str(e)})
+        }
+
+
+Copy
+
+Insert at cursor
+python
+Deploy:
+
+zip function.zip lambda_function.py
+
+aws lambda create-function \
+  --function-name priority-tasks-api \
+  --runtime python3.11 \
+  --role arn:aws:iam::YOUR_ACCOUNT:role/lambda-rds-role \
+  --handler lambda_function.lambda_handler \
+  --zip-file fileb://function.zip \
+  --timeout 30 \
+  --layers arn:aws:lambda:us-east-1:YOUR_ACCOUNT:layer:psycopg2-layer:1 \
+  --environment Variables="{DB_HOST=your-rds.rds.amazonaws.com,DB_NAME=yourdb,DB_USER=youruser,DB_PASSWORD=yourpass}" \
+  --vpc-config SubnetIds=subnet-xxx,SecurityGroupIds=sg-xxx
+
+Copy
+
+Insert at cursor
+bash
+Step 3: Create IAM Role
+lambda-role-policy.json:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "ec2:CreateNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DeleteNetworkInterface"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+
+Copy
+
+Insert at cursor
+json
+aws iam create-role \
+  --role-name lambda-rds-role \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {"Service": "lambda.amazonaws.com"},
+      "Action": "sts:AssumeRole"
+    }]
+  }'
+
+aws iam put-role-policy \
+  --role-name lambda-rds-role \
+  --policy-name lambda-rds-policy \
+  --policy-document file://lambda-role-policy.json
+
+Copy
+
+Insert at cursor
+Step 4: Create API Gateway
+# Create REST API
+aws apigateway create-rest-api \
+  --name priority-tasks-api \
+  --endpoint-configuration types=REGIONAL
+
+# Get API ID (save this)
+API_ID=<your-api-id>
+
+# Get root resource ID
+aws apigateway get-resources --rest-api-id $API_ID
+
+ROOT_ID=<root-resource-id>
+
+# Create /tasks resource
+aws apigateway create-resource \
+  --rest-api-id $API_ID \
+  --parent-id $ROOT_ID \
+  --path-part tasks
+
+RESOURCE_ID=<tasks-resource-id>
+
+# Create GET method
+aws apigateway put-method \
+  --rest-api-id $API_ID \
+  --resource-id $RESOURCE_ID \
+  --http-method GET \
+  --authorization-type NONE
+
+# Integrate with Lambda
+aws apigateway put-integration \
+  --rest-api-id $API_ID \
+  --resource-id $RESOURCE_ID \
+  --http-method GET \
+  --type AWS_PROXY \
+  --integration-http-method POST \
+  --uri arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:YOUR_ACCOUNT:function:priority-tasks-api/invocations
+
+# Grant API Gateway permission to invoke Lambda
+aws lambda add-permission \
+  --function-name priority-tasks-api \
+  --statement-id apigateway-invoke \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com
+
+# Deploy API
+aws apigateway create-deployment \
+  --rest-api-id $API_ID \
+  --stage-name prod
+
+
+Copy
+
+Insert at cursor
+Your API URL: https://{API_ID}.execute-api.us-east-1.amazonaws.com/prod/tasks
+
+Step 5: Connect Power BI
+Open Power BI Desktop
+
+Get Data → Web
+
+Enter URL: https://{API_ID}.execute-api.us-east-1.amazonaws.com/prod/tasks
+
+Click OK
+
+Power BI will load the JSON data
+
+Click Convert to Table → Expand columns
+
+Create your dashboard visualizations
+
+Step 6: Test
