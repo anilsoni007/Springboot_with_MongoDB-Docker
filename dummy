@@ -1,23 +1,47 @@
-# Create layer structure
-mkdir -p python/lib/python3.14/site-packages
+Architecture:
 
-# Install psycopg2-binary
-pip3 install psycopg2-binary -t python/lib/python3.14/site-packages/
+EC2 instance acts as secure bastion/jump host for RDS PostgreSQL administration
 
-# Create zip
-zip -r psycopg2-layer.zip python
+Private connectivity between EC2 and RDS within VPC
 
-# Publish layer
-aws lambda publish-layer-version \
-  --layer-name psycopg2-py314-layer \
-  --zip-file fileb://psycopg2-layer.zip \
-  --compatible-runtimes python3.14 \
-  --description "psycopg2 for Python 3.14"
+Eliminates need for direct public database access
 
-# Note the LayerVersionArn from output, then attach to function
-aws lambda update-function-configuration \
-  --function-name priority-tasks-api \
-  --layers arn:aws:lambda:REGION:ACCOUNT_ID:layer:psycopg2-py314-layer:1
+Security Benefits:
 
-# Cleanup
-rm -rf python psycopg2-layer.zip
+✓ Centralized access control through EC2 security groups
+
+✓ SSH key-based authentication for EC2 access
+
+✓ RDS security group restricts access to EC2 instance only
+
+✓ SSL/TLS encrypted connections between EC2 and RDS
+
+✓ Audit trail via CloudWatch logs and AWS CloudTrail
+
+Operational Advantages:
+
+Single point of administration for database operations
+
+Pre-installed PostgreSQL client tools (psql, pg_dump)
+
+Automated backup scripts and maintenance tasks
+
+Cost-effective: Small instance type sufficient for admin tasks
+
+Power BI Integration:
+
+On-premises gateway installed on EC2 for Power BI Service connectivity
+
+Secure data pipeline: Power BI → Gateway (EC2) → RDS
+
+Real-time dashboard updates with scheduled refresh
+
+Best Practices Implemented:
+
+Principle of least privilege (minimal security group rules)
+
+Network isolation (private subnets for RDS)
+
+Encrypted data in transit and at rest
+
+Regular security patching via AWS Systems Manager
