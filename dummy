@@ -119,3 +119,54 @@ Total: ~$3,500-4,000/month (Optimized with batching)
 
 Key Insight:
 Step Functions adds ~$112/month for 500 employees but provides better orchestration, error handling, and visibility. With batching optimization, this cost drops to near-zero while maintaining all benefits.
+
+
+============
+
+Per Execution State Count:
+- S3KeyMap: 1
+- ParallelIngest: 1
+- ProcessS3KeyMap: 1
+- LoadOutlookFlagged: 1
+- LoadTeamsEvent: 1
+- LoadJira: 1
+- WaitForDB: 1
+- Lambda Invoke: 1
+------------------------
+Total per execution: 8 state transitions
+
+Monthly Calculation (500 employees):
+- Events: 500 employees × 50 events/day × 30 days = 750,000 events
+- Executions: 750,000 (one Step Function execution per event)
+- State transitions: 750,000 × 8 = 6,000,000 transitions
+
+Cost Calculation:
+- Total transitions: 6,000,000
+- Free tier: -4,000
+- Billable: 5,996,000 transitions
+- Cost: 5,996,000 ÷ 1,000 × $0.025 = $149.90/month
+
+
+Per Execution State Count:
+- S3KeyMap: 1
+- ParallelIngest: 1
+- ProcessS3KeyMap: 1
+- LoadOutlookFlagged: 1
+- LoadTeamsEvent: 1
+- LoadJira: 1
+- WaitForDB: 1
+- Lambda Invoke: 1
+------------------------
+Total per execution: 8 state transitions
+
+Monthly Calculation (500 employees):
+- Events: 500 employees × 50 events/day × 30 days = 750,000 events
+- Executions: 750,000 (one Step Function execution per event)
+- State transitions: 750,000 × 8 = 6,000,000 transitions
+
+Cost Calculation:
+- Total transitions: 6,000,000
+- Free tier: -4,000
+- Billable: 5,996,000 transitions
+- Cost: 5,996,000 ÷ 1,000 × $0.025 = $149.90/month
+
