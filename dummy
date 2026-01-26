@@ -1,112 +1,121 @@
 Architecture Cost Breakdown (Monthly Estimates for 500 Employees)
+
 1. Amazon S3 Storage
 Assumptions: ~1KB per event, 50 events/employee/day
 
 Storage: 500 employees × 50 events × 1KB × 30 days = ~750 MB/month
-
 Cost: ~$0.02/month (negligible)
-
 PUT requests: 750,000/month = ~$0.004
-
 GET requests (Lambda): ~$0.003
 
 Total S3: ~$0.03/month
 
-2. AWS Lambda
+2. AWS Step Functions
+Assumptions: 750,000 executions/month, 6 state transitions per execution (S3KeyMap, ParallelIngest, ProcessS3KeyMap/LoadOutlook/LoadTeams/LoadJira, WaitForDB, Lambda invoke)
+
+State transitions: 750,000 × 6 = 4,500,000 transitions/month
+After free tier (4,000 per month): 4,496,000 transitions
+Cost: 4,496,000 × $0.025 per 1,000 = $112.40
+
+Total Step Functions: ~$112/month
+
+3. AWS Lambda
 Assumptions: 750,000 invocations/month, 512MB memory, 5 sec avg runtime
 
 Invocations: 750,000 × $0.20 per 1M = $0.15
-
 Compute: 750,000 × 5 sec × 512MB = 1,875,000 GB-seconds
-
 After free tier (400,000 GB-sec): 1,475,000 GB-seconds × $0.0000166667 = $24.58
 
 Total Lambda: ~$25/month
 
-3. Amazon Bedrock (Critical Cost Driver)
+4. Amazon Bedrock (Critical Cost Driver)
 Assumptions: Claude 3 Haiku (cost-effective), 1,000 input tokens + 200 output tokens per analysis
 
 Monthly tokens: 750,000 events × 1,200 tokens = 900M tokens
-
 Input: 750M tokens × $0.25 per 1M = $187.50
-
 Output: 150M tokens × $1.25 per 1M = $187.50
 
 Total Bedrock: ~$375/month
 
-4. Amazon RDS PostgreSQL
+5. Amazon RDS PostgreSQL
 Recommended: db.t4g.medium (2 vCPU, 4GB RAM) with Multi-AZ
 
 Instance: $120/month (On-Demand)
-
 Storage: 100GB GP3 = $11.50/month
-
 Backup storage: 100GB = $9.50/month
 
 Total RDS: ~$141/month
 
-5. Data Transfer
-Lambda → Bedrock, RDS → Power BI
+6. AWS Secrets Manager
+Assumptions: 5 secrets (RDS, Bedrock, Power BI, Microsoft Graph, Jira)
+
+Secrets storage: 5 × $0.40 = $2.00/month
+API calls: ~1.5M calls/month (Step Functions + Lambda)
+After free tier (10,000): 1,490,000 × $0.05 per 10,000 = $7.45
+
+Total Secrets Manager: ~$9.50/month
+
+7. Data Transfer
+Lambda → Bedrock, RDS → Power BI, Step Functions orchestration
 
 Estimate: ~$5-10/month
 
-Total Monthly Cost: ~$545 - $560
-Annual Cost: ~$6,540 - $6,720
+Total Monthly Cost: ~$667 - $677
+Annual Cost: ~$8,000 - $8,120
+Per-Employee Cost: $1.33 - $1.35/month
+
 Cost Optimization Strategies
-Immediate Savings (30-50% reduction):
-Batch Processing: Process events in batches (every 15-30 min) instead of real-time
 
-Reduces Lambda invocations by 90%
+Immediate Savings (40-50% reduction):
 
-Saves: ~$20/month
+1. Batch Processing with Step Functions:
+   - Trigger Step Functions every 15-30 min instead of per-event
+   - Reduces executions by 95%: 750,000 → 1,440/month
+   - Step Functions: $112 → $0 (within free tier)
+   - Lambda invocations: $25 → $5
+   - Saves: ~$132/month
 
-Bedrock Optimization:
+2. Bedrock Optimization:
+   - Use prompt caching (50% cost reduction)
+   - Batch 10-20 events per Bedrock call
+   - Use Claude 3 Haiku or Amazon Titan
+   - Potential savings: $150-200/month
 
-Use prompt caching (50% cost reduction on repeated context)
+3. RDS Reserved Instances:
+   - 1-year commitment: 40% savings = $48/month saved
+   - 3-year commitment: 60% savings = $72/month saved
 
-Batch multiple events in single Bedrock call
+4. Secrets Manager Optimization:
+   - Cache secrets in Lambda (reduce API calls by 80%)
+   - Saves: ~$6/month
 
-Use Claude 3 Haiku (cheapest) or consider Amazon Titan
+5. Smart Filtering:
+   - Only analyze high-priority events with Bedrock
+   - Use rule-based logic in Step Functions for routine tasks
+   - Potential savings: $100-150/month
 
-Potential savings: $150-200/month
-
-RDS Reserved Instances:
-
-1-year commitment: 40% savings = $48/month saved
-
-3-year commitment: 60% savings = $72/month saved
-
-Smart Filtering:
-
-Only analyze high-priority events with Bedrock
-
-Use rule-based logic for routine tasks
-
-Potential savings: $100-150/month
-
-Optimized Monthly Cost: ~$300-350
-Per-Employee Cost
-Standard: $1.09 - $1.12 per employee/month
-
-Optimized: $0.60 - $0.70 per employee/month
+Optimized Monthly Cost: ~$350-400
+Optimized Per-Employee Cost: $0.70 - $0.80/month
 
 Scaling Considerations
+
 For 1,000 employees:
-
-Bedrock: ~$750/month
-
-RDS: Same ($141) or upgrade to db.t4g.large ($240)
-
-Lambda: ~$50/month
-
-Total: ~$950-1,050/month
+- Step Functions: ~$225/month (or $0 with batching)
+- Bedrock: ~$750/month
+- RDS: Same ($141) or upgrade to db.t4g.large ($240)
+- Lambda: ~$50/month
+- Secrets Manager: ~$10/month
+Total: ~$1,180-1,280/month (Standard)
+Total: ~$650-750/month (Optimized with batching)
 
 For 5,000 employees:
+- Step Functions: ~$1,125/month (or $5 with batching)
+- Bedrock: ~$3,750/month
+- RDS: db.r6g.xlarge (~$500/month)
+- Lambda: ~$250/month
+- Secrets Manager: ~$15/month
+Total: ~$5,640-5,750/month (Standard)
+Total: ~$3,500-4,000/month (Optimized with batching)
 
-Bedrock: ~$3,750/month
-
-RDS: db.r6g.xlarge (~$500/month)
-
-Lambda: ~$250/month
-
-Total: ~$4,500-5,000/month
+Key Insight:
+Step Functions adds ~$112/month for 500 employees but provides better orchestration, error handling, and visibility. With batching optimization, this cost drops to near-zero while maintaining all benefits.
