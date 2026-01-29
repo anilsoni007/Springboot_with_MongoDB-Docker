@@ -1,172 +1,86 @@
-Architecture Cost Breakdown (Monthly Estimates for 500 Employees)
+To enable call recording to S3 bucket in Amazon Connect, here's how to do it:
 
-1. Amazon S3 Storage
-Assumptions: ~1KB per event, 50 events/employee/day
+Steps to Enable Call Recording
+1. Create S3 Bucket for Recordings
+aws s3 mb s3://your-connect-call-recordings --region us-east-1
 
-Storage: 500 employees × 50 events × 1KB × 30 days = ~750 MB/month
-Cost: ~$0.02/month (negligible)
-PUT requests: 750,000/month = ~$0.004
-GET requests (Lambda): ~$0.003
+Copy
 
-Total S3: ~$0.03/month
+Insert at cursor
+2. Configure Bucket Policy
+The S3 bucket needs permissions for Amazon Connect to write recordings:
 
-2. AWS Step Functions
-Assumptions: 750,000 executions/month, 6 state transitions per execution (S3KeyMap, ParallelIngest, ProcessS3KeyMap/LoadOutlook/LoadTeams/LoadJira, WaitForDB, Lambda invoke)
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AmazonConnectPut",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "connect.amazonaws.com"
+      },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::your-connect-call-recordings/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "YOUR_ACCOUNT_ID"
+        },
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:connect:REGION:YOUR_ACCOUNT_ID:instance/*"
+        }
+      }
+    }
+  ]
+}
 
-State transitions: 750,000 × 6 = 4,500,000 transitions/month
-After free tier (4,000 per month): 4,496,000 transitions
-Cost: 4,496,000 × $0.025 per 1,000 = $112.40
+Copy
 
-Total Step Functions: ~$112/month
+Insert at cursor
+json
+3. Enable in Amazon Connect Console
+Option A: Via Console
 
-3. AWS Lambda
-Assumptions: 750,000 invocations/month, 512MB memory, 5 sec avg runtime
+Go to Amazon Connect Console
 
-Invocations: 750,000 × $0.20 per 1M = $0.15
-Compute: 750,000 × 5 sec × 512MB = 1,875,000 GB-seconds
-After free tier (400,000 GB-sec): 1,475,000 GB-seconds × $0.0000166667 = $24.58
+Select your instance
 
-Total Lambda: ~$25/month
+Click Data storage in left menu
 
-4. Amazon Bedrock (Critical Cost Driver)
-Assumptions: Claude 3 Haiku (cost-effective), 1,000 input tokens + 200 output tokens per analysis
+Under Call recordings, click Edit
 
-Monthly tokens: 750,000 events × 1,200 tokens = 900M tokens
-Input: 750M tokens × $0.25 per 1M = $187.50
-Output: 150M tokens × $1.25 per 1M = $187.50
+Select your S3 bucket
 
-Total Bedrock: ~$375/month
+Optionally enable encryption (KMS)
 
-5. Amazon RDS PostgreSQL
-Recommended: db.t4g.medium (2 vCPU, 4GB RAM) with Multi-AZ
+Save
 
-Instance: $120/month (On-Demand)
-Storage: 100GB GP3 = $11.50/month
-Backup storage: 100GB = $9.50/month
+Option B: Via CLI
 
-Total RDS: ~$141/month
+aws connect associate-instance-storage-config \
+  --instance-id YOUR_INSTANCE_ID \
+  --resource-type CALL_RECORDINGS \
+  --storage-config StorageType=S3,S3Config={BucketName=your-connect-call-recordings,BucketPrefix=recordings}
 
-6. AWS Secrets Manager
-Assumptions: 5 secrets (RDS, Bedrock, Power BI, Microsoft Graph, Jira)
+Copy
 
-Secrets storage: 5 × $0.40 = $2.00/month
-API calls: ~1.5M calls/month (Step Functions + Lambda)
-After free tier (10,000): 1,490,000 × $0.05 per 10,000 = $7.45
+Insert at cursor
+bash
+4. Enable Recording in Contact Flow
+Add a Set recording behavior block in your contact flow:
 
-Total Secrets Manager: ~$9.50/month
+Agent and Customer: Records both sides
 
-7. Data Transfer
-Lambda → Bedrock, RDS → Power BI, Step Functions orchestration
+Agent only: Records agent audio only
 
-Estimate: ~$5-10/month
+Customer only: Records customer audio only
 
-Total Monthly Cost: ~$667 - $677
-Annual Cost: ~$8,000 - $8,120
-Per-Employee Cost: $1.33 - $1.35/month
+5. Verify Recording
+After a call, check S3:
 
-Cost Optimization Strategies
+aws s3 ls s3://your-connect-call-recordings/ --recursive
 
-Immediate Savings (40-50% reduction):
+Copy
 
-1. Batch Processing with Step Functions:
-   - Trigger Step Functions every 15-30 min instead of per-event
-   - Reduces executions by 95%: 750,000 → 1,440/month
-   - Step Functions: $112 → $0 (within free tier)
-   - Lambda invocations: $25 → $5
-   - Saves: ~$132/month
-
-2. Bedrock Optimization:
-   - Use prompt caching (50% cost reduction)
-   - Batch 10-20 events per Bedrock call
-   - Use Claude 3 Haiku or Amazon Titan
-   - Potential savings: $150-200/month
-
-3. RDS Reserved Instances:
-   - 1-year commitment: 40% savings = $48/month saved
-   - 3-year commitment: 60% savings = $72/month saved
-
-4. Secrets Manager Optimization:
-   - Cache secrets in Lambda (reduce API calls by 80%)
-   - Saves: ~$6/month
-
-5. Smart Filtering:
-   - Only analyze high-priority events with Bedrock
-   - Use rule-based logic in Step Functions for routine tasks
-   - Potential savings: $100-150/month
-
-Optimized Monthly Cost: ~$350-400
-Optimized Per-Employee Cost: $0.70 - $0.80/month
-
-Scaling Considerations
-
-For 1,000 employees:
-- Step Functions: ~$225/month (or $0 with batching)
-- Bedrock: ~$750/month
-- RDS: Same ($141) or upgrade to db.t4g.large ($240)
-- Lambda: ~$50/month
-- Secrets Manager: ~$10/month
-Total: ~$1,180-1,280/month (Standard)
-Total: ~$650-750/month (Optimized with batching)
-
-For 5,000 employees:
-- Step Functions: ~$1,125/month (or $5 with batching)
-- Bedrock: ~$3,750/month
-- RDS: db.r6g.xlarge (~$500/month)
-- Lambda: ~$250/month
-- Secrets Manager: ~$15/month
-Total: ~$5,640-5,750/month (Standard)
-Total: ~$3,500-4,000/month (Optimized with batching)
-
-Key Insight:
-Step Functions adds ~$112/month for 500 employees but provides better orchestration, error handling, and visibility. With batching optimization, this cost drops to near-zero while maintaining all benefits.
-
-
-============
-
-Per Execution State Count:
-- S3KeyMap: 1
-- ParallelIngest: 1
-- ProcessS3KeyMap: 1
-- LoadOutlookFlagged: 1
-- LoadTeamsEvent: 1
-- LoadJira: 1
-- WaitForDB: 1
-- Lambda Invoke: 1
-------------------------
-Total per execution: 8 state transitions
-
-Monthly Calculation (500 employees):
-- Events: 500 employees × 50 events/day × 30 days = 750,000 events
-- Executions: 750,000 (one Step Function execution per event)
-- State transitions: 750,000 × 8 = 6,000,000 transitions
-
-Cost Calculation:
-- Total transitions: 6,000,000
-- Free tier: -4,000
-- Billable: 5,996,000 transitions
-- Cost: 5,996,000 ÷ 1,000 × $0.025 = $149.90/month
-
-
-Per Execution State Count:
-- S3KeyMap: 1
-- ParallelIngest: 1
-- ProcessS3KeyMap: 1
-- LoadOutlookFlagged: 1
-- LoadTeamsEvent: 1
-- LoadJira: 1
-- WaitForDB: 1
-- Lambda Invoke: 1
-------------------------
-Total per execution: 8 state transitions
-
-Monthly Calculation (500 employees):
-- Events: 500 employees × 50 events/day × 30 days = 750,000 events
-- Executions: 750,000 (one Step Function execution per event)
-- State transitions: 750,000 × 8 = 6,000,000 transitions
-
-Cost Calculation:
-- Total transitions: 6,000,000
-- Free tier: -4,000
-- Billable: 5,996,000 transitions
-- Cost: 5,996,000 ÷ 1,000 × $0.025 = $149.90/month
-
+Insert at cursor
+bash
+Recordings are stored as: {prefix}/{instance-alias}/{year}/{month}/{day}/{contact-id}.wav
